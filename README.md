@@ -1,0 +1,119 @@
+# RNA-seq Differential Expression Analysis
+
+This repository contains R scripts for analyzing HTSeq-count output from RNA-seq experiments in *Acinetobacter* using two complementary approaches:
+
+1. **DESeq2** — count-based differential expression analysis
+2. **edgeR + limma-voom** — filtering, normalization, and linear-model-based differential expression analysis
+
+---
+
+## 1. DESeq2 Analysis (HTSeq-count workflow)
+
+**Purpose:** Identify differentially expressed genes between `Control` and `Treated` samples using raw HTSeq gene-count files.
+
+### Requirements
+- R (≥ 4.0 recommended)
+- Bioconductor package: `DESeq2`
+
+```r
+install.packages("BiocManager")
+BiocManager::install("DESeq2")
+```
+
+### Input
+- A directory of per-sample HTSeq `.count` files (one file per sample, output of `htseq-count`).
+- Sample files used in this analysis:
+
+| Sample | Condition |
+|---|---|
+| SRR13280201 | Control |
+| SRR4298910 | Control |
+| SRR4298911 | Control |
+| SRR4896147 | Control |
+| SRR4896148 | Control |
+| SRR8476337 | Treated |
+| SRR8476338 | Treated |
+| SRR8476339 | Treated |
+| SRR9090329 | Control |
+| SRR9090330 | Control |
+| SRR9090331 | Control |
+
+### Workflow
+1. Set the working directory to the folder containing the `.count` files.
+2. Build a `sampleTable` mapping each sample name and file to its condition (`Control`/`Treated`).
+3. Load the data with `DESeqDataSetFromHTSeqCount()` using the design formula `~ condition`.
+4. Set factor levels for `condition` (`Control`, `Treated`) so that `Control` is the reference level.
+5. Run the differential expression pipeline with `DESeq()`.
+6. Extract results with `results()` and inspect with `summary()`.
+7. Export results to CSV.
+
+### Output
+- `res_DEseq_8atcc_vs_3tigecycline_treated1.csv` — table of log2 fold changes, p-values, and adjusted p-values (padj) for each gene, comparing Treated vs. Control.
+
+### Notes
+- Update the `directory` path and output CSV path to match your local file system before running.
+- Ensure `sampleFiles` and `sampleNames` are listed in the same order as `sampleCondition`.
+
+---
+
+## 2. edgeR / limma-voom Analysis
+
+**Purpose:** An alternative/complementary differential expression workflow using count filtering, TMM normalization, and `voom`-transformed linear modeling (useful for comparing results with the DESeq2 output, or for datasets better suited to a limma-voom approach).
+
+### Requirements
+- R (≥ 4.0 recommended)
+- Bioconductor packages: `edgeR`, `limma`, `Glimma` (for `glMDSPlot`)
+- CRAN package: `RColorBrewer`
+
+```r
+BiocManager::install(c("edgeR", "limma", "Glimma"))
+install.packages("RColorBrewer")
+```
+
+### Input
+- `treated30_s.csv` — a merged count matrix (genes × samples, first column as row names) with 4 samples: 2 `treated`, 2 `untreated`.
+
+### Workflow
+1. **Load counts** into a `DGEList` object grouped by condition (`treated` / `untreated`).
+2. **Filter low-expression genes**:
+   - An initial CPM-based filter (`cpm > 100` in at least 2 samples).
+   - A more principled filter using `filterByExpr()`.
+3. **Explore library sizes and expression distributions** via log-CPM density plots (raw vs. filtered data).
+4. **Normalize** counts using the TMM method (`calcNormFactors`), with a demonstration of unnormalized vs. normalized boxplots.
+5. **Visualize sample relationships** with an MDS plot (`plotMDS`) and interactive Glimma MDS plots (`glMDSPlot`).
+6. **Build the design matrix** (no intercept, one column per group) and **contrast matrix** (`untreated - treated`).
+7. **Apply the voom transformation** to model the mean-variance relationship, then fit a linear model (`lmFit`), apply contrasts (`contrasts.fit`), and compute moderated statistics (`eBayes`).
+8. **Apply a fold-change threshold** (`treat()` with `lfc = 1`) and summarize significant genes with `decideTests()`.
+9. **Extract top differentially expressed genes** with `topTreat()`.
+10. Export the annotated results table to CSV.
+
+### Output
+- `treated30_sus_DE.csv` — table of top differentially expressed genes (treated vs. untreated) with fold changes and statistics.
+- `codes_edgeR_LIMMA.txt` — saved R command history for reproducibility.
+- Diagnostic plots: raw/filtered log-CPM density plots, normalization boxplots, MDS plots, voom mean-variance plot, and final SA plot.
+
+### Notes
+- Update all file paths (`treated30_s.csv`, output CSV, `savehistory()` path) to match your local file system.
+- The initial `cpm(d) > 100` filter is stricter than typical use and is shown for illustration; `filterByExpr()` is the recommended standard filtering approach and is what feeds into the downstream `voom`/`limma` analysis (object `x`).
+- `x2` is a synthetic example object created purely to demonstrate the effect of normalization (before/after `calcNormFactors`) and is not used in the final differential expression results.
+
+---
+
+## General Notes
+- Both scripts assume gene-level count data generated by `htseq-count` or an equivalent tool.
+- File paths throughout are Windows-style (`E:/...`) and specific to the original analysis environment — update them for your own system before running.
+- Reference: workflow adapted from the [UConn Bioinformatics HTSeq/DESeq tutorial](https://bioinformatics.uconn.edu/resources-and-events/tutorials-2/marine-rna-seq/).
+
+## Suggested Repository Structure
+```
+.
+├── README.md
+├── deseq2_analysis.R
+├── edgeR_limma_analysis.R
+├── data/
+│   ├── count_HTseq/           # per-sample .count files
+│   └── treated30_s.csv        # merged count matrix
+└── results/
+    ├── res_DEseq_8atcc_vs_3tigecycline_treated1.csv
+    └── treated30_sus_DE.csv
+```
